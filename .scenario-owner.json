@@ -2,5 +2,5 @@
   "scenarioId": "campaign-2026-08-16",
   "service": "demo-shipping",
   "template": "nodejs",
-  "release": "v003"
+  "release": "v004"
 }
