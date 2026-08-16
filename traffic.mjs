@@ -5,20 +5,104 @@ const profiles = {
   dev: { enterprise: 15, beta: 25, legacy: 12, busy: 2, quiet: 1 }
 };
 export const clusters = {
-  production: [
-    { key: 'prod-eu-west-01', name: 'Production EU West 01', environment: 'production', region: 'eu-west', ordinal: 1, releaseRing: 'stable', weight: 50 },
-    { key: 'prod-emea-central-04', name: 'Production EMEA Central 04', environment: 'production', region: 'emea-central', ordinal: 4, releaseRing: 'canary', weight: 30 },
-    { key: 'prod-sa-east-02', name: 'Production South America East 02', environment: 'production', region: 'sa-east', ordinal: 2, releaseRing: 'stable', weight: 20 }
+  "production": [
+    {
+      "key": "prod-eu-west-02",
+      "name": "Production EU West 02",
+      "environment": "production",
+      "region": "eu-west",
+      "ordinal": 2,
+      "releaseRing": "canary",
+      "weight": 5
+    },
+    {
+      "key": "prod-sa-east-02",
+      "name": "Production South America East 02",
+      "environment": "production",
+      "region": "sa-east",
+      "ordinal": 2,
+      "releaseRing": "stable",
+      "weight": 10
+    },
+    {
+      "key": "prod-us-east-02",
+      "name": "Production US East 02",
+      "environment": "production",
+      "region": "us-east",
+      "ordinal": 2,
+      "releaseRing": "stable",
+      "weight": 15
+    },
+    {
+      "key": "prod-emea-central-04",
+      "name": "Production EMEA Central 04",
+      "environment": "production",
+      "region": "emea-central",
+      "ordinal": 4,
+      "releaseRing": "stable",
+      "weight": 30
+    },
+    {
+      "key": "prod-eu-west-01",
+      "name": "Production EU West 01",
+      "environment": "production",
+      "region": "eu-west",
+      "ordinal": 1,
+      "releaseRing": "stable",
+      "weight": 40
+    }
   ],
-  staging: [
-    { key: 'stg-eu-central-01', name: 'Staging EU Central 01', environment: 'staging', region: 'eu-central', ordinal: 1, releaseRing: 'canary', weight: 60 },
-    { key: 'stg-eu-central-02', name: 'Staging EU Central 02', environment: 'staging', region: 'eu-central', ordinal: 2, releaseRing: 'stable', weight: 40 }
+  "staging": [
+    {
+      "key": "stg-eu-central-02",
+      "name": "Staging EU Central 02",
+      "environment": "staging",
+      "region": "eu-central",
+      "ordinal": 2,
+      "releaseRing": "canary",
+      "weight": 40
+    },
+    {
+      "key": "stg-eu-central-01",
+      "name": "Staging EU Central 01",
+      "environment": "staging",
+      "region": "eu-central",
+      "ordinal": 1,
+      "releaseRing": "stable",
+      "weight": 60
+    }
   ],
-  test: [
-    { key: 'test-eu-central-01', name: 'Test EU Central 01', environment: 'test', region: 'eu-central', ordinal: 1, releaseRing: 'canary', weight: 75 },
-    { key: 'test-eu-central-02', name: 'Test EU Central 02', environment: 'test', region: 'eu-central', ordinal: 2, releaseRing: 'stable', weight: 25 }
+  "test": [
+    {
+      "key": "test-eu-central-02",
+      "name": "Test EU Central 02",
+      "environment": "test",
+      "region": "eu-central",
+      "ordinal": 2,
+      "releaseRing": "canary",
+      "weight": 25
+    },
+    {
+      "key": "test-eu-central-01",
+      "name": "Test EU Central 01",
+      "environment": "test",
+      "region": "eu-central",
+      "ordinal": 1,
+      "releaseRing": "stable",
+      "weight": 75
+    }
   ],
-  dev: [{ key: 'dev-local-01', name: 'Development Local 01', environment: 'dev', region: 'local', ordinal: 1, releaseRing: 'stable', weight: 100 }]
+  "dev": [
+    {
+      "key": "dev-local-01",
+      "name": "Development Local 01",
+      "environment": "dev",
+      "region": "local",
+      "ordinal": 1,
+      "releaseRing": "stable",
+      "weight": 100
+    }
+  ]
 };
 const offsets = { 'demo-orders': 11, 'demo-storefront': 43, 'demo-profile': 71 };
 const clusterKey = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;

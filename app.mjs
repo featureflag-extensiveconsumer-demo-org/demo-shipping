@@ -2,7 +2,7 @@ import * as LaunchDarkly from '@launchdarkly/node-server-sdk';
 import { batchSize, contextForOneShot, contextForTraffic, isLoadProbe, probeSummary, scheduledEvaluations } from './traffic.mjs';
 
 const repository = 'demo-shipping';
-const release = 'v003';
+const release = 'v004';
 const flags = ["demo-checkout-address-validation","demo-express-returns","demo-shipping-estimates"];
 const profiles = ['production', 'staging', 'test', 'dev'];
 const safeIdentifier = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -59,7 +59,7 @@ async function flushOutcome(client) {
   try { await client.flush(); return 'ok'; } catch { return 'failed'; }
 }
 async function evaluateOne(client, flag, context) { return client.boolVariation(flag, context, false); }
-async function ordinaryBatch(client, options, firstIndex) {
+async function ordinaryBatch(client, options, firstIndex, openedAt) {
   const count = batchSize(options.profile, new Date()); let attempted = 0; const perFlag = {}; const clusters = {};
   for (const flag of flags) perFlag[flag] = { true: 0, false: 0 };
   for (let item = 0; item < count && !stopRequested; item += 1) {
@@ -68,7 +68,7 @@ async function ordinaryBatch(client, options, firstIndex) {
     clusters[context.cluster.key] = (clusters[context.cluster.key] || 0) + 1;
   }
   const flush = await flushOutcome(client);
-  console.log(JSON.stringify({ type: 'traffic-batch', repository, release, flags, perFlag, profile: options.profile, generation: options.generation, contexts: count, attempted, clusters, flush }));
+  console.log(JSON.stringify({ type: 'traffic-batch', repository, release, flags, perFlag, profile: options.profile, generation: options.generation, contexts: count, attempted, clusters, flush, connectionMs: openedAt ? Date.now() - openedAt : null }));
   if (flush !== 'ok') throw new Error('SDK flush failed.');
   return count;
 }
@@ -98,7 +98,7 @@ async function main() {
   const sdkKey = process.env.LD_EVALUATION_SDK_KEY;
   if (!sdkKey) throw new Error('LD_EVALUATION_SDK_KEY is required.');
   const options = optionsFrom(process.argv.slice(2)); const probe = options.traffic && isLoadProbe(repository, options.profile);
-  const client = LaunchDarkly.init(sdkKey, {
+  const connect = () => LaunchDarkly.init(sdkKey, {
     capacity: 10000, flushInterval: 5, enableEventCompression: true,
     contextKeysCapacity: Math.min(options.contextPoolSize, 10000), contextKeysFlushInterval: 300, logger,
     application: { id: repository, name: repository + ' synthetic evaluator', version: release, versionName: probe ? 'production-load-probe' : 'standard-traffic' }
@@ -106,17 +106,37 @@ async function main() {
   const stop = () => { stopRequested = true; if (wake) wake(); };
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
-    await client.waitForInitialization({ timeout: 10 });
     if (!options.traffic) {
-      for (let index = 0; index < options.evaluations; index += 1) {
-        const context = contextForOneShot(repository, options, index);
-        for (const flag of flags) console.log(JSON.stringify({ repository, release, flag, value: await evaluateOne(client, flag, context), context }));
+      const client = connect();
+      try {
+        await client.waitForInitialization({ timeout: 10 });
+        for (let index = 0; index < options.evaluations; index += 1) {
+          const context = contextForOneShot(repository, options, index);
+          for (const flag of flags) console.log(JSON.stringify({ repository, release, flag, value: await evaluateOne(client, flag, context), context }));
+        }
+      } finally { await client.flush(); await client.close(); }
+    } else if (probe) {
+      // The bounded rate probe keeps one sustained connection on purpose: its
+      // evaluations-per-hour figure only means anything if pacing stays continuous.
+      const client = connect();
+      try { await client.waitForInitialization({ timeout: 10 }); await probeTraffic(client, options); }
+      finally { await client.flush(); await client.close(); }
+    } else {
+      // Ordinary traffic connects only for the duration of each batch. LaunchDarkly
+      // meters average concurrent service connections, so a client held open between
+      // batches would cost a full connection while evaluating nothing.
+      let index = 0;
+      while (!stopRequested) {
+        const openedAt = Date.now(); const client = connect();
+        try {
+          await client.waitForInitialization({ timeout: 10 });
+          index += await ordinaryBatch(client, options, index, openedAt);
+        } finally { await client.flush(); await client.close(); }
+        if (!stopRequested) await wait(options.intervalSeconds * 1000);
       }
-    } else if (probe) await probeTraffic(client, options);
-    else { let index = 0; while (!stopRequested) { index += await ordinaryBatch(client, options, index); if (!stopRequested) await wait(options.intervalSeconds * 1000); } }
+    }
   } finally {
     process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
-    await client.flush(); await client.close();
   }
 }
 
