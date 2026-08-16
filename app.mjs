@@ -2,7 +2,8 @@ import * as LaunchDarkly from '@launchdarkly/node-server-sdk';
 import { batchSize, contextForOneShot, contextForTraffic, isLoadProbe, probeSummary, scheduledEvaluations } from './traffic.mjs';
 
 const repository = 'demo-shipping';
-const flags = ["demo-shipping-estimates","demo-checkout-address-validation","demo-express-returns"];
+const release = 'v002';
+const flags = ["demo-checkout-address-validation","demo-express-returns","demo-shipping-estimates"];
 const profiles = ['production', 'staging', 'test', 'dev'];
 const safeIdentifier = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const integer = (value, minimum, maximum, label) => {
@@ -59,15 +60,17 @@ async function flushOutcome(client) {
 }
 async function evaluateOne(client, flag, context) { return client.boolVariation(flag, context, false); }
 async function ordinaryBatch(client, options, firstIndex) {
-  const count = batchSize(options.profile, new Date()); let attempted = 0; const variations = { true: 0, false: 0 }; const clusters = {};
+  const count = batchSize(options.profile, new Date()); let attempted = 0; const perFlag = {}; const clusters = {};
+  for (const flag of flags) perFlag[flag] = { true: 0, false: 0 };
   for (let item = 0; item < count && !stopRequested; item += 1) {
     const context = contextForTraffic(repository, options.profile, firstIndex + item, { generation: options.generation, contextPoolSize: options.contextPoolSize });
-    const value = await evaluateOne(client, flags[0], context); variations[String(value)] += 1; clusters[context.cluster.key] = (clusters[context.cluster.key] || 0) + 1; attempted += 1;
+    for (const flag of flags) { const value = await evaluateOne(client, flag, context); perFlag[flag][String(value)] += 1; attempted += 1; }
+    clusters[context.cluster.key] = (clusters[context.cluster.key] || 0) + 1;
   }
   const flush = await flushOutcome(client);
-  console.log(JSON.stringify({ type: 'traffic-batch', repository, flag: flags[0], profile: options.profile, generation: options.generation, attempted, variations, clusters, flush }));
+  console.log(JSON.stringify({ type: 'traffic-batch', repository, release, flags, perFlag, profile: options.profile, generation: options.generation, contexts: count, attempted, clusters, flush }));
   if (flush !== 'ok') throw new Error('SDK flush failed.');
-  return attempted;
+  return count;
 }
 async function probeTraffic(client, options) {
   const started = Date.now(); let attempted = 0; let errors = 0; let nextSummary = started + 60000;
@@ -98,7 +101,7 @@ async function main() {
   const client = LaunchDarkly.init(sdkKey, {
     capacity: 10000, flushInterval: 5, enableEventCompression: true,
     contextKeysCapacity: Math.min(options.contextPoolSize, 10000), contextKeysFlushInterval: 300, logger,
-    application: { id: repository, name: repository + ' synthetic evaluator', version: 'task-0030', versionName: probe ? 'production-load-probe' : 'standard-traffic' }
+    application: { id: repository, name: repository + ' synthetic evaluator', version: release, versionName: probe ? 'production-load-probe' : 'standard-traffic' }
   });
   const stop = () => { stopRequested = true; if (wake) wake(); };
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
@@ -106,8 +109,8 @@ async function main() {
     await client.waitForInitialization({ timeout: 10 });
     if (!options.traffic) {
       for (let index = 0; index < options.evaluations; index += 1) {
-        const context = contextForOneShot(repository, options, index); const flag = flags[0];
-        console.log(JSON.stringify({ repository, flag, value: await evaluateOne(client, flag, context), context }));
+        const context = contextForOneShot(repository, options, index);
+        for (const flag of flags) console.log(JSON.stringify({ repository, release, flag, value: await evaluateOne(client, flag, context), context }));
       }
     } else if (probe) await probeTraffic(client, options);
     else { let index = 0; while (!stopRequested) { index += await ordinaryBatch(client, options, index); if (!stopRequested) await wait(options.intervalSeconds * 1000); } }
