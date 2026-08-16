@@ -22,12 +22,19 @@ export const clusters = {
 };
 const offsets = { 'demo-orders': 11, 'demo-storefront': 43, 'demo-profile': 71 };
 const clusterKey = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const knownService = (repository) => typeof repository === 'string' && clusterKey.test(repository);
+const offsetFor = (repository) => {
+  if (Object.hasOwn(offsets, repository)) return offsets[repository];
+  let hash = 7;
+  for (let index = 0; index < repository.length; index += 1) hash = (hash * 31 + repository.charCodeAt(index)) % 100;
+  return hash;
+};
 
 export function isLoadProbe(repository, profile) { return repository === 'demo-orders' && profile === 'production'; }
 export function clusterFor(repository, profile, index) {
   const choices = clusters[profile];
-  if (!choices || !Object.hasOwn(offsets, repository) || !Number.isSafeInteger(index) || index < 0) throw new Error('Invalid cluster input.');
-  const bucket = (index * 17 + offsets[repository]) % 100; let boundary = 0;
+  if (!choices || !knownService(repository) || !Number.isSafeInteger(index) || index < 0) throw new Error('Invalid cluster input.');
+  const bucket = (index * 17 + offsetFor(repository)) % 100; let boundary = 0;
   const selected = choices.find((item) => { boundary += item.weight; return bucket < boundary; });
   if (!selected || !clusterKey.test(selected.key)) throw new Error('Invalid cluster configuration.');
   const { weight, ...context } = selected; return context;
@@ -36,7 +43,7 @@ function multiContext(repository, user, cluster, generation) {
   return { kind: 'multi', user, service: { key: repository, name: repository }, cluster: { ...cluster, generation } };
 }
 export function contextForOneShot(repository, options, index) {
-  if (!Object.hasOwn(offsets, repository) || !Number.isSafeInteger(options?.evaluations) || options.evaluations < 1 || !Number.isSafeInteger(index) || index < 0 || index >= options.evaluations) throw new Error('Invalid one-shot input.');
+  if (!knownService(repository) || !Number.isSafeInteger(options?.evaluations) || options.evaluations < 1 || !Number.isSafeInteger(index) || index < 0 || index >= options.evaluations) throw new Error('Invalid one-shot input.');
   const choices = clusters[options.profile]; const selected = choices?.find((item) => item.key === (options.cluster || choices[0].key));
   if (!selected) throw new Error('Cluster does not belong to the selected environment.');
   const { weight, ...cluster } = selected;
@@ -45,8 +52,8 @@ export function contextForOneShot(repository, options, index) {
 }
 export function contextForTraffic(repository, profile, index, options = {}) {
   const settings = profiles[profile]; const contextPoolSize = options.contextPoolSize ?? 10000;
-  if (!settings || !Object.hasOwn(offsets, repository) || !Number.isSafeInteger(index) || index < 0 || !Number.isSafeInteger(contextPoolSize) || contextPoolSize < 1 || contextPoolSize > 10000) throw new Error('Invalid traffic input.');
-  const bucket = (index * 37 + offsets[repository]) % 100;
+  if (!settings || !knownService(repository) || !Number.isSafeInteger(index) || index < 0 || !Number.isSafeInteger(contextPoolSize) || contextPoolSize < 1 || contextPoolSize > 10000) throw new Error('Invalid traffic input.');
+  const bucket = (index * 37 + offsetFor(repository)) % 100;
   const user = { key: [repository, profile, index % contextPoolSize].join('-'), plan: 'free', region: 'eu', cohort: 'control' };
   if (repository === 'demo-profile') { if (bucket < settings.legacy) user.region = 'legacy'; }
   else if (bucket < settings.enterprise) user.plan = 'enterprise';
